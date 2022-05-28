@@ -29,15 +29,14 @@ class PlanValidator:
     def __init__(self, plan_file_list):
         self.primary_plan = ""
         self.plans = {}
-        for index, plan_file in enumerate(plan_file_list):
+        for plan_file in plan_file_list:
             plan_key = self.generate_plan_file_key(plan_file)
             try:
                 self.plans[plan_key] = self._generate_plan_data(plan_file)
                 if not self.primary_plan:
                     self.primary_plan = plan_key
             except IOError as err:
-                print("WARN: Unable to open {}. Error: {}".format(plan_file, err.message))
-                continue
+                print(f"WARN: Unable to open {plan_file}. Error: {err.message}")
 
     @staticmethod
     def generate_plan_file_key(plan_file):
@@ -95,12 +94,16 @@ class PlanValidator:
                 start_date = datetime.datetime.strptime(line[s], "%Y-%m-%d").date()
                 end_date = datetime.datetime.strptime(line[e], "%Y-%m-%d").date()
             except Exception as err:
-                print("WARN: Invalid date format found in task '{}' of '{}'. Task will be skipped. Error: {}"
-                      .format(line[t], plan_file, err))
+                print(
+                    f"WARN: Invalid date format found in task '{line[t]}' of '{plan_file}'. Task will be skipped. Error: {err}"
+                )
+
                 continue
             if line[t] in tasks:
-                raise Exception("Non-unique task name \"{}\" found in \"{}\". Aborting plan generation."
-                                .format(line[t], plan_file))
+                raise Exception(
+                    f'Non-unique task name "{line[t]}" found in "{plan_file}". Aborting plan generation.'
+                )
+
             gates_line = line[g:]
             if not gates_line:
                 gates_line = ["", '1.']
@@ -115,11 +118,12 @@ class PlanValidator:
                 if gate:
                     gates[gate] = {self.GATE: gate, self.GHE: None}
             releases[line[r]] = {self.REL: line[r], self.GHE: None}
-        plan = {self.TASK: tasks,
-                self.TASK_LIST: task_list,
-                self.GATE: gates,
-                self.REL: releases}
-        return plan
+        return {
+            self.TASK: tasks,
+            self.TASK_LIST: task_list,
+            self.GATE: gates,
+            self.REL: releases,
+        }
 
     def _process_plan_task(self, task_name, engineer, release, task_ev, start_date, end_date, gates):
         """Generates a task dict object based on the decomposed task line information.
@@ -160,7 +164,7 @@ class PlanValidator:
                 percent = gates[index + 1]
                 percent = float(percent.strip().replace('%', ''))
                 if percent > 1.:
-                    percent = percent / 100.
+                    percent /= 100.
 
             # contribution is task_ex time the difference between recorded_percent and the previous_percent
             contribution = task_ev * (percent - prev_percent)
@@ -181,7 +185,7 @@ class PlanValidator:
                                self.GHE: None,
                                self.DIFF: None
                                }
-            # NOTE - if the task has a self.GHE entry, it's a link to a label because task_labels was turned on
+                # NOTE - if the task has a self.GHE entry, it's a link to a label because task_labels was turned on
         return task_dict
 
     def find_issue_in_plan(self, issue, plan_key=None):
@@ -236,13 +240,16 @@ class PlanValidator:
                 contribution = tasks[task_name][gate_name][self.EV]
                 for local_key, ghe_upper_key, ghe_lower_key in [(self.ENG, "assignee", "login"),
                                                                 (self.REL, "milestone", "title")]:
-                    if ghe_upper_key in list(issue.keys()) and issue[ghe_upper_key]:
-                        ghe_value = issue[ghe_upper_key][ghe_lower_key]
-                    else:
-                        ghe_value = ""
+                    ghe_value = (
+                        issue[ghe_upper_key][ghe_lower_key]
+                        if ghe_upper_key in list(issue.keys())
+                        and issue[ghe_upper_key]
+                        else ""
+                    )
+
                     if tasks[task_name][gate_name][local_key] != ghe_value:
-                        diff_string = "{} - Plan: {}, GitHub: {}" \
-                            .format(local_key, tasks[task_name][gate_name][local_key], ghe_value)
+                        diff_string = f"{local_key} - Plan: {tasks[task_name][gate_name][local_key]}, GitHub: {ghe_value}"
+
                         tasks[task_name][gate_name][self.DIFF].append(diff_string)
         return task_name, gate_name, contribution
 
@@ -273,19 +280,17 @@ class PlanValidator:
         print("\n{} Missing Labels {} ".format("-" * 10, "-" * 10))
         for gate in list(gates.keys()):
             if gate not in list(labels.keys()):
-                print("Unable to find label \"{}\" in GitHub repo {}.".format(gate, repo_name))
+                print(f'Unable to find label "{gate}" in GitHub repo {repo_name}.')
                 if create:
-                    print("** Creating \"{}\"".format(gate))
+                    print(f'** Creating "{gate}"')
                     ghe_conn.create_label(repo_name, gate)
-        if update or show_found:
-            pass
-            # Nothing to do in this case, retained for consistency
         if show_found:
             print("\n{} Found Labels {} ".format("-" * 10, "-" * 10))
             for gate in list(gates.keys()):
                 if gate in list(labels.keys()):
-                    print("Found label \"{}\" in GitHub repo {} at url {}."
-                          .format(gate, repo_name, labels[gate]["url"]))
+                    print(
+                        f'Found label "{gate}" in GitHub repo {repo_name} at url {labels[gate]["url"]}.'
+                    )
 
     def validate_releases_against_github(self, ghe_conn, repo_name, plan_key=None, show_found=False,
                                          update=False, create=False, task_labels=False):
@@ -313,21 +318,19 @@ class PlanValidator:
         print("\n{} Missing Releases {} ".format("-" * 10, "-" * 10))
         for release in list(releases.keys()):
             if release not in list(milestones.keys()):
-                print("Unable to find milestone \"{}\" in GitHub repo {}.".format(release, repo_name))
+                print(f'Unable to find milestone "{release}" in GitHub repo {repo_name}.')
                 if create:
-                    print("** Creating \"{}\"".format(release))
+                    print(f'** Creating "{release}"')
                     milestone = ghe_conn.create_milestone(repo_name, release)
                     # since we're aliasing the milestones for easy lookup, alias this new one too
                     ghe_conn.milestones[repo_name][release] = milestone
-        if update or show_found:
-            pass
-            # Nothing to do in this case, retained in case due_date calculation and updating was wanted.
         if show_found:
             print("\n{} Found Releases {} ".format("-" * 10, "-" * 10))
             for release in list(releases.keys()):
                 if release in list(milestones.keys()):
-                    print("Found milestone \"{}\" in GitHub repo {} at url {}."
-                          .format(release, repo_name, milestones[release]["url"]))
+                    print(
+                        f'Found milestone "{release}" in GitHub repo {repo_name} at url {milestones[release]["url"]}.'
+                    )
 
     def validate_plan_against_github(self, ghe_conn, repo_name, plan_key=None, show_found=False,
                                      update=False, create=False, task_labels=False):
@@ -359,8 +362,10 @@ class PlanValidator:
         for task in task_list:
             for gate in tasks[task][self.GATE_LIST]:
                 if not tasks[task][gate][self.GHE]:
-                    print("Unable to find task \"{}\" with gate \"{}\" in GitHub repo {}. Issue may not exist."
-                          .format(task, gate, repo_name))
+                    print(
+                        f'Unable to find task "{task}" with gate "{gate}" in GitHub repo {repo_name}. Issue may not exist.'
+                    )
+
                     if create:
                         self.create_plan_task(ghe_conn, repo_name, tasks[task][gate], task_labels)
         if update or show_found:
@@ -379,8 +384,9 @@ class PlanValidator:
             for task in task_list:
                 for gate in tasks[task][self.GATE_LIST]:
                     if tasks[task][gate][self.GHE] and not tasks[task][gate][self.DIFF]:
-                        print("Found task \"{}\" with gate \"{}\" in GitHub repo {} at url {}."
-                              .format(task, gate, repo_name, tasks[task][gate][self.GHE]["url"]))
+                        print(
+                            f'Found task "{task}" with gate "{gate}" in GitHub repo {repo_name} at url {tasks[task][gate][self.GHE]["url"]}.'
+                        )
 
     def create_plan_task(self, ghe_conn, repo_name, task_object, task_labels=False):
         """ Creates a GitHub issue from an internal plan task/gate issue representation.
@@ -392,7 +398,7 @@ class PlanValidator:
         :param task_labels: Whether to label the issue with the task name as well.
         :return:
         """
-        print("** Creating \"{}: {}\"".format(task_object[self.TASK], task_object[self.GATE]))
+        print(f'** Creating "{task_object[self.TASK]}: {task_object[self.GATE]}"')
         task = task_object[self.TASK]
         gate = task_object[self.GATE]
         milestone = ghe_conn.milestones[repo_name][task_object[self.REL]]["number"]
@@ -400,7 +406,7 @@ class PlanValidator:
         labels = [gate]
         if task_labels:
             labels.append(task)
-        name = "{}: {}".format(task, gate)
+        name = f"{task}: {gate}"
         try:
             ghe_conn.create_issue(repo_name, issue_name=name, labels_list=labels, milestone_number=milestone,
                                   assignees_list=assignees)
@@ -421,7 +427,7 @@ class PlanValidator:
         :return:
         """
         issue = task_object[self.GHE]
-        print("** Updating \"{}: {}\"".format(task_object[self.TASK], task_object[self.GATE]))
+        print(f'** Updating "{task_object[self.TASK]}: {task_object[self.GATE]}"')
         # check and update release
         milestone = ghe_conn.milestones[repo_name][task_object[self.REL]]
         try:

@@ -8,15 +8,14 @@ import matplotlib
 import matplotlib.dates as mdates
 
 # check for headless executions
-if "DISPLAY" not in os.environ:
-    if os.system('python -c "import matplotlib.pyplot as plt; plt.figure()"') != 0:
-        print("INFO: Lack of display should generate an expected ImportError. Changing MatPlotLib backend.")
-        matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-else:
-    import matplotlib.pyplot as plt
-
-
+if (
+    "DISPLAY" not in os.environ
+    and os.system('python -c "import matplotlib.pyplot as plt; plt.figure()"')
+    != 0
+):
+    print("INFO: Lack of display should generate an expected ImportError. Changing MatPlotLib backend.")
+    matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 # import constants for the days of the week
 from matplotlib.dates import MO, TU, WE, TH, FR, SA
 
@@ -68,22 +67,17 @@ class GitHubMetricsReport:
         if "--zen-api-key" in args:
             self.config_opts.zen_api_key = args[args.index("--zen-api-key") + 1]
 
-        if "--show" in args:
-            self.show = True
-        else:
-            self.show = False
-
+        self.show = "--show" in args
         self.metrics = projectmetrics.ProjectMetrics(None, config_opts=self.config_opts)
 
 
 def create_graph_colors_list(data_types):
     if len(data_types) > 20:
         cmap = plt.get_cmap(SECONDARY_CMAP)
-        colors_list = cmap(np.linspace(0., 1., len(data_types)))
+        return cmap(np.linspace(0., 1., len(data_types)))
     else:
         cmap = plt.get_cmap(DEFAULT_CMAP)
-        colors_list = cmap(np.arange(len(data_types)))
-    return colors_list
+        return cmap(np.arange(len(data_types)))
 
 
 def format_label_chart(fig, axs, x_data):
@@ -162,8 +156,7 @@ def generate_table(table_columns, data, title="", directory=None, show=False):
 
     fig.tight_layout()
 
-    output_file = finalize_figure(fig, title, directory, show)
-    return output_file
+    return finalize_figure(fig, title, directory, show)
 
 
 def generate_line_plot(x_data, y_data, filled=None, data_labels=None, title="", directory=None, show=False,
@@ -171,10 +164,7 @@ def generate_line_plot(x_data, y_data, filled=None, data_labels=None, title="", 
     if data_labels is None:
         data_labels = list(y_data.keys())
 
-    if date_plot:
-        x_index = x_data
-    else:
-        x_index = np.array(list(range(len(x_data))))
+    x_index = x_data if date_plot else np.array(list(range(len(x_data))))
     y_offset = np.zeros((len(x_index),))
 
     colors = create_graph_colors_list(data_labels)
@@ -207,10 +197,7 @@ def generate_line_plot(x_data, y_data, filled=None, data_labels=None, title="", 
     else:
         format_label_chart(fig, ax, x_data)
 
-    # handles, labels = _sort_legend(ax)
-    # ax.legend(handles, labels)
-    output_file = finalize_figure(fig, title, directory, show)
-    return output_file
+    return finalize_figure(fig, title, directory, show)
 
 
 def _generate_complicated_bar_plot(x_data, y_data, data_labels=None, title="", directory=None, show=False,
@@ -221,14 +208,7 @@ def _generate_complicated_bar_plot(x_data, y_data, data_labels=None, title="", d
     bar_width = DEFAULT_BAR_WIDTH
     colors = create_graph_colors_list(data_labels)
 
-    if date_plot:
-        # TODO consider re-enabling; expand chart when range > 60 days
-        # sorted_x_data = sorted(x_data)
-        # fig_x = max(10., ((sorted_x_data[-1] - sorted_x_data[0]).days + 1) / 6.)
-        fig_x = 10
-    else:
-        # expand chart when components > 25
-        fig_x = max(10., len(x_data) / 2.5)
+    fig_x = 10 if date_plot else max(10., len(x_data) / 2.5)
     if split and len(data_labels) > 1:
         fig, axs = plt.subplots(len(data_labels), 1, figsize=(fig_x, 5 * len(data_labels)))
         ax = axs[0]
@@ -261,9 +241,15 @@ def _generate_complicated_bar_plot(x_data, y_data, data_labels=None, title="", d
             for position, bar in enumerate(bars):
                 height = bar.get_height()
                 if height != 0:
-                    ax.text(bar.get_x() + bar.get_width() / 2., height + y_offset[position], " {} ".format(height),
-                            ha='center', va='bottom')
-                    # ha='center', va='bottom', rotation=90)
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2.0,
+                        height + y_offset[position],
+                        f" {height} ",
+                        ha='center',
+                        va='bottom',
+                    )
+
+                                    # ha='center', va='bottom', rotation=90)
         if stacked:
             y_offset = y_offset + y_data[label]
         if index == 0:
@@ -276,8 +262,7 @@ def _generate_complicated_bar_plot(x_data, y_data, data_labels=None, title="", d
     else:
         format_label_chart(fig, ax, x_data)
 
-    output_file = finalize_figure(fig, title, directory, show)
-    return output_file
+    return finalize_figure(fig, title, directory, show)
 
 
 def generate_stacked_bar_plot(x_data, y_data, data_labels=None, title="", directory=None, show=False, date_plot=False):
@@ -311,31 +296,36 @@ def table_project_summary(reporter, categories=None, period=None, show=False, di
     # issue label counts, starting with overall
     if categories[I]:
         total = metrics.issue_totals[metrics.OV][metrics.NEW][-1] - metrics.issue_totals[metrics.OV][metrics.DONE][-1]
-        table_data.append([metrics.OV + " issues", total])
+        table_data.append([f"{metrics.OV} issues", total])
     for key in categories[I]:
         if key == metrics.OV:
             continue
         total = metrics.issue_totals[key][metrics.NEW][-1] - metrics.issue_totals[key][metrics.DONE][-1]
-        table_data.append([key + " issues", total])
+        table_data.append([f"{key} issues", total])
 
     # sloc
     for category in categories[S]:
-        total = 0
-        for key in (list(metrics.sloc_data.keys())):
-            total += metrics.sloc_data[key].get(category) \
-                if metrics.sloc_data[key].get(category) is not None else 0
+        total = sum(
+            metrics.sloc_data[key].get(category)
+            if metrics.sloc_data[key].get(category) is not None
+            else 0
+            for key in (list(metrics.sloc_data.keys()))
+        )
+
         table_data.append([category, total])
 
     # component counts
     for comp in categories[C]:
-        total = 0
-        for key in list(metrics.comp_data.keys()):
-            total += metrics.comp_data[key].get(comp) \
-                if metrics.comp_data[key].get(comp) is not None else 0
+        total = sum(
+            metrics.comp_data[key].get(comp)
+            if metrics.comp_data[key].get(comp) is not None
+            else 0
+            for key in list(metrics.comp_data.keys())
+        )
+
         table_data.append([comp, total])
 
-    output_file = generate_table(table_columns, table_data, title, directory, show)
-    return output_file
+    return generate_table(table_columns, table_data, title, directory, show)
 
 
 def table_issue_label_summary(reporter, categories=None, period=None, show=False, directory=None, title="Issue Label Summary"):
@@ -362,16 +352,43 @@ def table_project_diffs(reporter, categories=None, period=None, show=False, dire
     if categories[I]:
         # TODO evaluate issue label filter approach
         label_totals = metrics.issue_totals[metrics.OV]
-        table_data += [[metrics.OV] + ["+" + str(label_totals[metrics.NEW][-1] - label_totals[metrics.NEW][-x]) +
-                                       " / -" + str(label_totals[metrics.DONE][-1] - label_totals[metrics.DONE][-x])
-                                       if x <= len(metrics.issue_dates) else "" for x in period]]
+        table_data += [
+            (
+                [metrics.OV]
+                + [
+                    (
+                        f"+{str(label_totals[metrics.NEW][-1] - label_totals[metrics.NEW][-x])}"
+                        + " / -"
+                    )
+                    + str(
+                        label_totals[metrics.DONE][-1]
+                        - label_totals[metrics.DONE][-x]
+                    )
+                    if x <= len(metrics.issue_dates)
+                    else ""
+                    for x in period
+                ]
+            )
+        ]
+
         for key in categories[I]:
             if key == metrics.OV:
                 continue
             label_totals = metrics.issue_totals[key]
-            row = [key] + ["+" + str(label_totals[metrics.NEW][-1] - label_totals[metrics.NEW][-x]) +
-                           " / -" + str(label_totals[metrics.DONE][-1] - label_totals[metrics.DONE][-x])
-                           if x <= len(metrics.issue_dates) else "" for x in period]
+            row = [key] + [
+                (
+                    f"+{str(label_totals[metrics.NEW][-1] - label_totals[metrics.NEW][-x])}"
+                    + " / -"
+                )
+                + str(
+                    label_totals[metrics.DONE][-1]
+                    - label_totals[metrics.DONE][-x]
+                )
+                if x <= len(metrics.issue_dates)
+                else ""
+                for x in period
+            ]
+
             table_data.append(row)
 
     # manual sloc diffs
@@ -389,7 +406,7 @@ def table_project_diffs(reporter, categories=None, period=None, show=False, dire
                 if index == 0:
                     continue
                 if value and int(value) >= 0:
-                    row[index] = '+' + value
+                    row[index] = f'+{value}'
             table_data.append(row)
 
     # component counts
@@ -407,11 +424,10 @@ def table_project_diffs(reporter, categories=None, period=None, show=False, dire
                 if index == 0:
                     continue
                 if value and int(value) >= 0:
-                    row[index] = '+' + value
+                    row[index] = f'+{value}'
             table_data.append(row)
 
-    output_file = generate_table(table_columns, table_data, title, directory, show)
-    return output_file
+    return generate_table(table_columns, table_data, title, directory, show)
 
 
 def table_issue_label_diffs(reporter, categories=None, period=None, show=False, directory=None, title="Issue Label Changes"):
@@ -435,11 +451,7 @@ def table_task_list(reporter, categories=None, period=None, show=False, director
     table_columns = metrics.task_items_header
     table_data = [[task] + [metrics.plan_dict[task][header] for header in metrics.task_items_header[1:]]
                   for task in metrics.plan_task_list]
-    #
-    # table_data = [metrics.task_items[task] for task in metrics.plan_task_list]
-
-    output_file = generate_table(table_columns, table_data, title, directory, show)
-    return output_file
+    return generate_table(table_columns, table_data, title, directory, show)
 
 
 def line_plot_trend(reporter, categories=None, period=None, show=False, directory=None, title=""):
@@ -464,9 +476,15 @@ def line_plot_trend(reporter, categories=None, period=None, show=False, director
         data_categories = categories[C]
         data_source = metrics.comp_totals
 
-    output_file = generate_line_plot(period_dates, data_source, data_labels=data_categories,
-                                     title=title, directory=directory, show=show, date_plot=True)
-    return output_file
+    return generate_line_plot(
+        period_dates,
+        data_source,
+        data_labels=data_categories,
+        title=title,
+        directory=directory,
+        show=show,
+        date_plot=True,
+    )
 
 
 def line_plot_issue_labels_trend(reporter, categories=None, period=None, show=False, directory=None, title="Issue Label Trendline"):
@@ -519,12 +537,21 @@ def stacked_bar_plot_trend(reporter, categories=None, period=None, show=False, d
         raise ValueError("No categories specified for visualization.")
 
     if period == 1:
-        print("Warning: Unable to produce " + title + " with available data points. Visualization will be skipped.")
+        print(
+            f"Warning: Unable to produce {title} with available data points. Visualization will be skipped."
+        )
+
         return
 
-    output_file = generate_stacked_bar_plot(period_dates, data, data_labels=data_categories,
-                                            title=title, directory=directory, show=show, date_plot=True)
-    return output_file
+    return generate_stacked_bar_plot(
+        period_dates,
+        data,
+        data_labels=data_categories,
+        title=title,
+        directory=directory,
+        show=show,
+        date_plot=True,
+    )
 
 
 def stacked_bar_plot_issue_labels_trend(reporter, categories=None, period=None, show=False, directory=None, title="Issue Label Trend"):
@@ -559,14 +586,26 @@ def stacked_bar_plot_compare(reporter, categories=None, period=None, show=False,
     else:
         raise ValueError("No categories specified for visualization.")
 
-    data = {}
-    for key in data_categories:
-        data[key] = np.array([data_source[component][key] if data_source[component].get(key) is not None else 0
-                              for component in components])
+    data = {
+        key: np.array(
+            [
+                data_source[component][key]
+                if data_source[component].get(key) is not None
+                else 0
+                for component in components
+            ]
+        )
+        for key in data_categories
+    }
 
-    output_file = generate_stacked_bar_plot(components, data, data_labels=data_categories,
-                                            title=title, directory=directory, show=show)
-    return output_file
+    return generate_stacked_bar_plot(
+        components,
+        data,
+        data_labels=data_categories,
+        title=title,
+        directory=directory,
+        show=show,
+    )
 
 
 def stacked_bar_plot_comp_compare(reporter, categories=None, period=None, show=False, directory=None, title="Component Structure Comparison"):
@@ -608,9 +647,14 @@ def bar_plot_component(reporter, categories=None, period=None, show=False, direc
             data_list.append(value)
         data[key] = np.array(data_list)
 
-    output_file = generate_adjacent_bar_plot(components, data, data_labels=data_categories,
-                                             title=title, directory=directory, show=show)
-    return output_file
+    return generate_adjacent_bar_plot(
+        components,
+        data,
+        data_labels=data_categories,
+        title=title,
+        directory=directory,
+        show=show,
+    )
 
 
 def bar_plot_sloc(reporter, categories=None, period=None, show=False, directory=None, title="Component SLOC"):
@@ -652,9 +696,14 @@ def split_bar_plot_component(reporter, categories=None, period=None, show=False,
             data_list.append(value)
         data[key] = np.array(data_list)
 
-    output_file = generate_split_bar_plot(components, data, data_labels=data_categories,
-                                          title=title, directory=directory, show=show)
-    return output_file
+    return generate_split_bar_plot(
+        components,
+        data,
+        data_labels=data_categories,
+        title=title,
+        directory=directory,
+        show=show,
+    )
 
 
 def split_bar_plot_sloc(reporter, categories=None, period=None, show=False, directory=None, title="Component SLOC"):
@@ -856,16 +905,15 @@ def bar_plot_sloc_snapshot(reporter, categories=None, period=None, show=False, d
     data_source = []
     data_categories = []
 
-    if categories[S]:
-        for category in categories[S]:
-            data_categories.append(category)
-            data_source.append(metrics.sloc_totals[category][-1])
-        if config.metrics_sloc_estimation is not None:
-            data_categories.append("Estimated")
-            data_source.append(int(config.metrics_sloc_estimation))
-
-    else:
+    if not categories[S]:
         return
+
+    for category in categories[S]:
+        data_categories.append(category)
+        data_source.append(metrics.sloc_totals[category][-1])
+    if config.metrics_sloc_estimation is not None:
+        data_categories.append("Estimated")
+        data_source.append(int(config.metrics_sloc_estimation))
 
     cmap = plt.get_cmap(DEFAULT_CMAP)
     colors = cmap(np.arange(len(data_categories)))
@@ -874,10 +922,8 @@ def bar_plot_sloc_snapshot(reporter, categories=None, period=None, show=False, d
     xax = np.arange(len(data_categories))
     bars = ax.bar(xax, np.array(data_source))
 
-    index = 0
-    for bar in bars:
+    for index, bar in enumerate(bars):
         bar.set_color(colors[index])
-        index += 1
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width() / 2., 1.05 * height, '%d' % int(height), ha='center', va='bottom')
 
@@ -906,14 +952,16 @@ def bar_chart_active_tasks(reporter, categories=None, period=None, show=False, d
     xc = "Expected completion"
     cc = "Current completion"
 
-    active_tasks = []
     task_names = []
     task_progress = {xc: [], cc: []}
     categories = [xc, cc]
 
-    for task_key in metrics.plan_task_list:
-        if metrics.plan_dict[task_key][metrics.pv.START] <= today or metrics.plan_dict[task_key][metrics.CV] > 0:
-            active_tasks.append(metrics.plan_dict[task_key])
+    active_tasks = [
+        metrics.plan_dict[task_key]
+        for task_key in metrics.plan_task_list
+        if metrics.plan_dict[task_key][metrics.pv.START] <= today
+        or metrics.plan_dict[task_key][metrics.CV] > 0
+    ]
 
     active_tasks = sorted(active_tasks, key=lambda task_item: task_item[metrics.pv.START])
     for task in active_tasks:
@@ -923,9 +971,14 @@ def bar_chart_active_tasks(reporter, categories=None, period=None, show=False, d
             task_progress[xc].append(round(task[metrics.XV] / pv, 2))
             task_progress[cc].append(round(task[metrics.CV] / pv, 2))
 
-    output_file = generate_adjacent_bar_plot(task_names, task_progress, data_labels=categories,
-                                             title=title, directory=directory, show=show)
-    return output_file
+    return generate_adjacent_bar_plot(
+        task_names,
+        task_progress,
+        data_labels=categories,
+        title=title,
+        directory=directory,
+        show=show,
+    )
 
 
 def line_plot_ev_plan(reporter, categories=None, period=None, show=False, directory=None, title="Task Progress vs Plan"):
@@ -946,9 +999,16 @@ def line_plot_ev_plan(reporter, categories=None, period=None, show=False, direct
         data_x[plan_key] = metrics.plan_totals[plan_key][metrics.DATE]
         data_categories += [plan_key]
 
-    output_file = generate_line_plot(data_x, data, filled=filled, data_labels=data_categories,
-                                     title=title, directory=directory, show=show, date_plot=True)
-    return output_file
+    return generate_line_plot(
+        data_x,
+        data,
+        filled=filled,
+        data_labels=data_categories,
+        title=title,
+        directory=directory,
+        show=show,
+        date_plot=True,
+    )
 
 
 def sloc_overview_annotation(reporter, categories=None, period=None, show=False, directory=None, title="SLOC Overview Annotation"):
@@ -972,7 +1032,7 @@ def comp_totals_annotation(reporter, categories=None, period=None, show=False, d
 def annotation_insert(types):
     component_string = "    "
     for component in sorted(types):
-        component_string += component + ", "
+        component_string += f"{component}, "
         if len(component_string) > 120:
             newline = component_string[:-2].rfind(', ')
             if newline > 0:
@@ -1017,7 +1077,7 @@ def main(args):
     if categories.get(S) is None:
         categories[S] = DEFAULT_SLOC_TYPES
     if categories[S] == ["sloc"]:
-        categories[S] = [val + "sloc" for val in [metrics.MC, metrics.AC, metrics.XML]]
+        categories[S] = [f"{val}sloc" for val in [metrics.MC, metrics.AC, metrics.XML]]
 
     if categories.get(C) is None:
         categories[C] = config_opts.metrics_comp_types
@@ -1033,17 +1093,17 @@ def main(args):
     # verify / prepare output structure
     if report_dir != "":
         if report_dir[-1] != "/":
-            report_dir = report_dir + "/"
+            report_dir = f"{report_dir}/"
         # attempt to create directory, an errno of 17 means it already exists and we can ignore it
         try:
             os.mkdir(report_dir)
         except OSError as err:
             if err.errno != 17:
-                print("ERROR: " + err.message)
+                print(f"ERROR: {err.message}")
 
     if artifact_dir != "":
         if artifact_dir[-1] != "/":
-            artifact_dir = artifact_dir + "/"
+            artifact_dir = f"{artifact_dir}/"
         if artifact_dir.startswith(report_dir):
             artifact_dir = artifact_dir[len(report_dir):]
         # attempt to create directory, an errno of 17 means it already exists and we can ignore it
@@ -1051,14 +1111,14 @@ def main(args):
             os.mkdir(report_dir + artifact_dir)
         except OSError as err:
             if err.errno != 17:
-                print("ERROR: " + err.message)
+                print(f"ERROR: {err.message}")
 
     if config_opts.force_remote_history:
         try:
-            os.mkdir(report_dir + "history/")
+            os.mkdir(f"{report_dir}history/")
         except OSError as err:
             if err.errno != 17:
-                print("ERROR: " + err.message)
+                print(f"ERROR: {err.message}")
 
     directory = report_dir + artifact_dir
 
@@ -1070,7 +1130,10 @@ def main(args):
             artifacts.append(globals()[section](ghereporter, categories=categories, period=period, directory=directory, show=show))
             # getattr(githubmetricsreport, 'bar')()
         except BaseException as err:
-            print("Visualization " + section + " had an error and can not be generated. Error follows:")
+            print(
+                f"Visualization {section} had an error and can not be generated. Error follows:"
+            )
+
             print(err.message)
 
     # build the artifacts into a markdown report
@@ -1084,7 +1147,15 @@ def main(args):
                 if ".png" in artifact:
                     artifact_file = artifact[len(report_dir):]
                     section_name = artifact[len(directory):-4].replace("_", " ")
-                    line = "## " + section_name + "\n![" + section_name + "](./" + artifact_file + ")\n\n"
+                    line = (
+                        f"## {section_name}"
+                        + "\n!["
+                        + section_name
+                        + "](./"
+                        + artifact_file
+                        + ")\n\n"
+                    )
+
                 else:
                     line = artifact
                 fp.write(line)
@@ -1094,7 +1165,7 @@ def main(args):
 def output_mapping(location=""):
     fs = []
     maxi = 0
-    with open(location + "metricsreport.py") as file:
+    with open(f"{location}metricsreport.py") as file:
         for line in file:
             if "def" in line and "title=" in line:
                 func = line[4:line.find('(')]
@@ -1107,7 +1178,7 @@ def output_mapping(location=""):
 
     fs = sorted(fs)
     for f, t in fs:
-        print('| ' + f + " | " + t + " |  |")
+        print(f'| {f} | {t} |  |')
     return
 
 
