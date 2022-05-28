@@ -130,7 +130,6 @@ class ProjectMetrics:
                                    {gate: self.plan_dict[task][gate][self.pv.EV]
                                     for gate in self.plan_dict[task][self.pv.GATE_LIST]}
                                    for task in self.plan_task_list}
-                pass
 
     def generate_plan_metrics(self, plan_dict, primary):
         """
@@ -200,7 +199,7 @@ class ProjectMetrics:
         # if target_dir and not target_dir.endswith('/'):
         #     target_dir = target_dir + '/'
         if not target_file.startswith(target_dir):
-            target_file = target_dir + '/' + target_file
+            target_file = f'{target_dir}/{target_file}'
 
         # make sure the directory exists, find an appropriate file target_path for retrieval
         contents = self._retrieve_git_directory(repo_name, target_dir, ref, traverse_submodules)
@@ -214,12 +213,14 @@ class ProjectMetrics:
                 target_path = current_path
 
         if not target_path:
-            raise IOError("Unsuccessful retrieval of file '{}/{}' on branch {}. Error code: {}. Content: {}"
-                          .format(repo_name, target_file, ref, 404, ""))
+            raise IOError(
+                f"Unsuccessful retrieval of file '{repo_name}/{target_file}' on branch {ref}. Error code: 404. Content: "
+            )
+
 
         # if we're getting a different file that matches the alt_patter, tell the user.
         if target_file not in target_path:
-            print("INFO: Found alternate file for '{}' at '{}'".format(target_file, target_path))
+            print(f"INFO: Found alternate file for '{target_file}' at '{target_path}'")
 
         # grab the file we've decided on
         body = self._ghe_conn.get_raw_file(repo_name, path=target_path, ref=ref, traverse_submodules=traverse_submodules)
@@ -272,7 +273,7 @@ class ProjectMetrics:
             component_dict = {}
 
         if make_target_dict.get("DEPLOYMENTS") and make_target in make_target_dict['DEPLOYMENTS']:
-            make_target = make_target + "_MODULES"
+            make_target = f"{make_target}_MODULES"
 
         # no guarantee of non-circular make modules, so we check for circular calls and just refuse to do anything with them
         if stack is None:
@@ -306,11 +307,13 @@ class ProjectMetrics:
                 lines = self._retrieve_git_file(repo_name, config_opts.metrics_make_location, config_opts.git_branch,
                                                 traverse_submodules=True)
                 # if successful, assume other repos aren't needed and break
-                print("INFO: Retrieved {}/{} on {}"
-                      .format(repo_name, config_opts.metrics_make_location, config_opts.git_branch))
+                print(
+                    f"INFO: Retrieved {repo_name}/{config_opts.metrics_make_location} on {config_opts.git_branch}"
+                )
+
                 break
             except IOError as err:
-                print("WARN: " + err.message)
+                print(f"WARN: {err.message}")
                 continue
         if not lines:
             # nothing to do if found nothing
@@ -325,9 +328,8 @@ class ProjectMetrics:
             if component in config_opts.dir_comp_map:
                 # if component is already in the dir_comp_map, it's mapped and we don't really care what to
                 continue
-            else:
-                config_opts.dir_comp_map[component] = component
-                config_opts.components.add(component)
+            config_opts.dir_comp_map[component] = component
+            config_opts.components.add(component)
         return
 
     def generate_issue_data(self, config_opts):
@@ -343,7 +345,7 @@ class ProjectMetrics:
                 try:
                     issues = self._ghe_conn.get_issues(repo_name)
                 except BaseException as err:
-                    print("WARN: {}".format(err.message))
+                    print(f"WARN: {err.message}")
                 for issue_number in list(issues.keys()):
                     # if issue_number % 100 == 0 or issue_number == 682:
                     #     pass
@@ -369,8 +371,10 @@ class ProjectMetrics:
                     # check to see if it was closed without a close event for some reason
                     closed_date = issue.get("closed_at")
                     if closed_date is not None and issue_open:
-                        print("INFO: Issue {} is closed, but no closed event was processed. Close applied outside "
-                              "of event processing loop.".format(issue_number))
+                        print(
+                            f"INFO: Issue {issue_number} is closed, but no closed event was processed. Close applied outside of event processing loop."
+                        )
+
                         closed_date = datetime.datetime.strptime(closed_date[:10], "%Y-%m-%d").date()
                         self.process_issue_close_event(None, event_labels, progress_deltas, earned_value, "closed",
                                                        closed_date)
@@ -475,14 +479,15 @@ class ProjectMetrics:
             issue_labels.add(label_name)
         for label in event_labels:
             if label not in issue_labels:
-                print("WARN: Label \"{}\" was found in labeling events, but is not not on issue \"{}\" currently. It "
-                      "was likely changed to a new name and not indicated in the config. This may cause graphs to "
-                      "appear invalid.".format(label, issue_name))
+                print(
+                    f'WARN: Label "{label}" was found in labeling events, but is not not on issue "{issue_name}" currently. It was likely changed to a new name and not indicated in the config. This may cause graphs to appear invalid.'
+                )
+
         for label in issue_labels:
             if label not in event_labels and label not in task_labels:
-                print("WARN: Label \"{}\" is on issue \"{}\" currently, but was not found in labeling events. This is "
-                      "likely a renamed label that was not indicated in the config. This may cause graphs to appear "
-                      "invalid.".format(label, issue_name))
+                print(
+                    f'WARN: Label "{label}" is on issue "{issue_name}" currently, but was not found in labeling events. This is likely a renamed label that was not indicated in the config. This may cause graphs to appear invalid.'
+                )
 
     def process_issue_events(self, config_opts, issue_json, progress_deltas, task, earned_value):
         """
@@ -503,22 +508,12 @@ class ProjectMetrics:
             if event_json is None:
                 continue
             event_type = event_json.get("event")
-            if event_type == "labeled":
+            if event_type in ["labeled", "unlabeled"]:
                 event_labels = self.process_issue_label_event(config_opts, event_json, issue_open, event_labels,
                                                               progress_deltas, task, earned_value)
-            elif event_type == "unlabeled":
-                event_labels = self.process_issue_label_event(config_opts, event_json, issue_open, event_labels,
-                                                              progress_deltas, task, earned_value)
-            elif event_type == "closed":
+            elif event_type in ["closed", "reopened"]:
                 issue_open = self.process_issue_close_event(event_json, event_labels, progress_deltas,
                                                             task, earned_value)
-            elif event_type == "reopened":
-                issue_open = self.process_issue_close_event(event_json, event_labels, progress_deltas,
-                                                            task, earned_value)
-            elif event_type == "milestoned":
-                pass
-            elif event_type == "demilestoned":
-                pass
         return event_labels, issue_open
 
     def process_issue_label_event(self, config_opts, event_json, issue_open, event_labels, progress_deltas, task, earned_value):
@@ -553,8 +548,10 @@ class ProjectMetrics:
                 event_labels.remove(label_name)
             except KeyError as err:
                 event_labels.discard(label_name)
-                print("WARN: {} removed from labels before being added. It was likely renamed after it was added, and "
-                      "not indicated in the config. This may cause graphs to appear invalid.".format(label_name))
+                print(
+                    f"WARN: {label_name} removed from labels before being added. It was likely renamed after it was added, and not indicated in the config. This may cause graphs to appear invalid."
+                )
+
         else:
             return event_labels
 
@@ -639,9 +636,10 @@ class ProjectMetrics:
             # add label dict if one is not present, complain because this should have happened
             if self._issue_delta_timelines.get(label_name) is None:
                 self._issue_delta_timelines[label_name] = {self.NEW: {}, self.DONE: {}}
-                print("WARN: Label '{}' was on a closed issue before being added. It was likely renamed after it was "
-                      "added, and not indicated in the config. This may cause graphs to appear invalid."
-                      .format(label_name))
+                print(
+                    f"WARN: Label '{label_name}' was on a closed issue before being added. It was likely renamed after it was added, and not indicated in the config. This may cause graphs to appear invalid."
+                )
+
             if self._issue_delta_timelines[label_name][self.DONE].get(event_date) is None:
                 self._issue_delta_timelines[label_name][self.DONE][event_date] = modifier
             else:
@@ -660,29 +658,35 @@ class ProjectMetrics:
         elif metrics_report_location == '.':
             metrics_report_location = ""
         if metrics_report_location and not metrics_report_location.endswith('/'):
-            metrics_report_location = metrics_report_location + '/'
+            metrics_report_location = f'{metrics_report_location}/'
         if metrics_report_location is not None:
             for repo_name in config_opts.git_repo_list:
                 if not self.sloc_data:
                     sloc_file = metrics_report_location + config_opts.metrics_build_prefix + self.SLOC_REP
                     try:
-                        lines = self._retrieve_git_file(repo_name, sloc_file, config_opts.git_branch, traverse_submodules=True)
-                        if lines:
-                            print("INFO: Retrieved {}/{} on {}"
-                                  .format(repo_name, sloc_file, config_opts.git_branch))
+                        if lines := self._retrieve_git_file(
+                            repo_name,
+                            sloc_file,
+                            config_opts.git_branch,
+                            traverse_submodules=True,
+                        ):
+                            print(f"INFO: Retrieved {repo_name}/{sloc_file} on {config_opts.git_branch}")
                             self.sloc_data = self.process_compiled_sloc(config_opts, lines)
                     except IOError as err:
-                        print("WARN: " + err.message)
+                        print(f"WARN: {err.message}")
                 if not self.comp_data:
                     comp_file = metrics_report_location + self.COMP_REP
                     try:
-                        lines = self._retrieve_git_file(repo_name, comp_file, config_opts.git_branch, traverse_submodules=True)
-                        if lines:
-                            print("INFO: Retrieved {}/{} on {}"
-                                  .format(repo_name, comp_file, config_opts.git_branch))
+                        if lines := self._retrieve_git_file(
+                            repo_name,
+                            comp_file,
+                            config_opts.git_branch,
+                            traverse_submodules=True,
+                        ):
+                            print(f"INFO: Retrieved {repo_name}/{comp_file} on {config_opts.git_branch}")
                             self.comp_data = self.process_compiled_comp(config_opts, lines)
                     except IOError as err:
-                        print("WARN: " + err.message)
+                        print(f"WARN: {err.message}")
 
         if not self.comp_data:
             self.comp_data = self.generate_comp_data(config_opts)
@@ -718,14 +722,16 @@ class ProjectMetrics:
             columns = line.split(',')
             module = columns[module_index].strip()
             if module not in config_opts.dir_comp_map:
-                print("INFO: {} found in SLOC report, but is not among known components for this target."
-                      .format(module))
+                print(
+                    f"INFO: {module} found in SLOC report, but is not among known components for this target."
+                )
+
                 continue
             component = config_opts.dir_comp_map[module]
             if component not in sloc_data:
                 sloc_data[component] = {}
             for index, value in enumerate(columns):
-                if headers[index] == self.SMOD or headers[index] == self.STOT:
+                if headers[index] in [self.SMOD, self.STOT]:
                     continue
                 if headers[index] not in sloc_data[component]:
                     sloc_data[component][headers[index]] = int(value.strip())
@@ -734,10 +740,13 @@ class ProjectMetrics:
         for component in config_opts.components:
             if component in sloc_data:
                 continue
-            print("WARN: No SLOC found for component \"{}\" in compiled SlocReport file".format(component))
+            print(
+                f'WARN: No SLOC found for component "{component}" in compiled SlocReport file'
+            )
+
             sloc_data[component] = {}
             for header in headers:
-                if header == self.SMOD or header == self.STOT:
+                if header in [self.SMOD, self.STOT]:
                     continue
                 sloc_data[component][header] = 0
         return sloc_data
@@ -774,8 +783,10 @@ class ProjectMetrics:
             if module.startswith('/'):
                 module = module[1:]
             if module not in config_opts.dir_comp_map:
-                print("INFO: {} found in ComponentReport, but is not among known components for this target."
-                      .format(module))
+                print(
+                    f"INFO: {module} found in ComponentReport, but is not among known components for this target."
+                )
+
                 continue
             component = config_opts.dir_comp_map[module]
             if component not in comp_data:
@@ -790,7 +801,7 @@ class ProjectMetrics:
                 # custom handling for total rollups. i.e. "Total Ports = Input Ports + Output Ports"
                 for total in self.COMP_ROLLUPS:
                     if total in headers[index]:
-                        total_key = "Total " + total
+                        total_key = f"Total {total}"
                         if total_key not in comp_data[component]:
                             comp_data[component][total_key] = int(value.strip())
                         else:
@@ -821,28 +832,27 @@ class ProjectMetrics:
                                                         traverse_submodules=True)
                     except IOError as err:
                         if " directory " in err.message:
-                            print("WARN: {}".format(err.message))
+                            print(f"WARN: {err.message}")
                 if lines is None:
                     continue
+                header = lines[0]
+                lines = lines[1:]
+                columns = header.split()
+                if "file" in columns:
+                    for line in lines:
+                        words = line.split()
+                        if len(words) < len(columns):
+                            continue
+                        index = columns.index("file")
+                        if words[index] == "total":
+                            for i in range(index - 1):
+                                if self.sloc_data[component].get(sloc_type[1] + columns[i]) is None:
+                                    self.sloc_data[component][sloc_type[1] + columns[i]] = 0
+                                self.sloc_data[component][sloc_type[1] + columns[i]] += int(words[i])
                 else:
-                    header = lines[0]
-                    lines = lines[1:]
-                    columns = header.split()
-                    if "file" not in columns:
-                        for column in columns:
-                            if self.sloc_data[component].get(sloc_type[1] + column) is None:
-                                self.sloc_data[component][sloc_type[1] + column] = 0
-                    else:
-                        for line in lines:
-                            words = line.split()
-                            if len(words) < len(columns):
-                                continue
-                            index = columns.index("file")
-                            if words[index] == "total":
-                                for i in range(index - 1):
-                                    if self.sloc_data[component].get(sloc_type[1] + columns[i]) is None:
-                                        self.sloc_data[component][sloc_type[1] + columns[i]] = 0
-                                    self.sloc_data[component][sloc_type[1] + columns[i]] += int(words[i])
+                    for column in columns:
+                        if self.sloc_data[component].get(sloc_type[1] + column) is None:
+                            self.sloc_data[component][sloc_type[1] + column] = 0
         return self.sloc_data
 
     def generate_comp_data(self, config_opts):

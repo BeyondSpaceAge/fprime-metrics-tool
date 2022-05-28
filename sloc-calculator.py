@@ -17,18 +17,16 @@ import subprocess
 
 
 def matches_pattern(path: Path, patterns: List[str]) -> bool:
-    for pat in patterns:
-        if path.match(pat):
-            return True
-    return False
+    return any(path.match(pat) for pat in patterns)
 
 
 def find_files(path: Path, patterns: List[str], ignorelist: List[str] = []):
     matched_files = []
     for pat in patterns:
-        for f in path.glob(pat):
-            if not matches_pattern(f, ignorelist):
-                matched_files.append(f)
+        matched_files.extend(
+            f for f in path.glob(pat) if not matches_pattern(f, ignorelist)
+        )
+
     return matched_files
 
 
@@ -70,10 +68,9 @@ def count_sloc_cpp(file: Path) -> int:
     output = proc.stdout.read().split()
     if len(output) != 14:
         raise ValueError(
-            "{}: Unexpected number of elements in ncsl output, expected 14, got {}.".format(
-                file, len(output)
-            )
+            f"{file}: Unexpected number of elements in ncsl output, expected 14, got {len(output)}."
         )
+
     # Return field that represents lines of code without empty lines and comments.
     return int(output[5])
 
@@ -152,17 +149,16 @@ def main() -> int:
     mods = find_modules(root, ignorelist=["build-*", "test"])
     mod_names = list(map(lambda m: m.relative_to(root), mods))
 
-    build_folder = "build-fprime-automatic-" + args.platform
+    build_folder = f"build-fprime-automatic-{args.platform}"
     if args.ut:
         build_folder += "-ut"
     build_path = root / build_folder
 
     if not build_path.exists():
         print(
-            "[ERROR] Platform build cache {} not found for platform {}".format(
-                build_path, args.platform
-            )
+            f"[ERROR] Platform build cache {build_path} not found for platform {args.platform}"
         )
+
         return -1
 
     ignored_files = []

@@ -67,7 +67,7 @@ class GitHubConnector:
         else:
             self.found_submodules = {}
             self.github = True
-            self.github_auth_header = {"Authorization": "token " + self.github_key}
+            self.github_auth_header = {"Authorization": f"token {self.github_key}"}
             self.github_limit = 1
             self.github_remaining = 1
             self.github_reset = 0
@@ -96,7 +96,7 @@ class GitHubConnector:
         path_steps = path.split('/')
         current_path = ""
         for index, step in enumerate(path_steps):
-            current_path += '/' + step
+            current_path += f'/{step}'
             if not complete and index == len(path_steps) - 1:
                 break
             if (repo_name, ref, current_path) in list(self.found_submodules.keys()):
@@ -108,7 +108,7 @@ class GitHubConnector:
         path_steps = path.split('/')
         current_path = ""
         for step in path_steps:
-            current_path += "/" + step
+            current_path += f"/{step}"
             github_contents_url = self.github_url + self.API_ENDPOINT + '/' + repo_name + self.CONTENTS_SUFFIX + current_path
             params = {"ref": ref}
             content, h, s = self._github_request(github_contents_url, params=params, follow_next=False)
@@ -166,15 +166,14 @@ class GitHubConnector:
             # this will 404 if it traverses a submodule. it will not display contents if it ends at a submodule.
             content = self._get_contents_object(repo_name, path, ref, traverse_submodules, complete=True)
         except requests.HTTPError as err:
-            if err.response.status_code == 404 and traverse_submodules:
-                # find new submodules, if any
-                self._find_submodules_in_path(repo_name, path, ref)
-                # check to see if resolving the path with potential new submodules is different, implying something
-                # interesting. if not, something is weird so raise err
-                if (repo_name, path, ref) != self._resolve_submodule_path(repo_name, path, ref):
-                    return self.get_contents(repo_name, path, ref, traverse_submodules)
-                else:
-                    raise err
+            if err.response.status_code != 404 or not traverse_submodules:
+                raise err
+            # find new submodules, if any
+            self._find_submodules_in_path(repo_name, path, ref)
+            # check to see if resolving the path with potential new submodules is different, implying something
+            # interesting. if not, something is weird so raise err
+            if (repo_name, path, ref) != self._resolve_submodule_path(repo_name, path, ref):
+                return self.get_contents(repo_name, path, ref, traverse_submodules)
             else:
                 raise err
         # before passing back content, see if it's a submodule. if it is, add it and retry to get actual contents
@@ -264,9 +263,13 @@ class GitHubConnector:
                 break
             # do zenhub for the issue, if applicable
             if self.zenhub:
-                zenhub_issue_url = self.zenhub_url + '/' + github_repo_id + self.ISSUES_SUFFIX
-                zenhub_issue_data, zenhub_issue_headers, status = \
-                    self._zenhub_request(zenhub_issue_url + "/" + str(issue_number))
+                zenhub_issue_url = f'{self.zenhub_url}/{github_repo_id}{self.ISSUES_SUFFIX}'
+                (
+                    zenhub_issue_data,
+                    zenhub_issue_headers,
+                    status,
+                ) = self._zenhub_request(f"{zenhub_issue_url}/{str(issue_number)}")
+
                 issue_json.update(zenhub_issue_data.json())
             else:
                 zenhub_issue_url = ""
@@ -296,14 +299,22 @@ class GitHubConnector:
         if self.issues.get(repo_name).get(issue_number) is None:
             github_repo_url = self.github_url + self.API_ENDPOINT + '/' + repo_name
             github_issues_url = github_repo_url + self.ISSUES_SUFFIX
-            issue_json, headers, status = \
-                self._github_request(github_issues_url + "/" + str(issue_number))
+            issue_json, headers, status = self._github_request(
+                f"{github_issues_url}/{str(issue_number)}"
+            )
+
             # do zenhub for the issue, if applicable
             if self.zenhub:
                 github_repo_id = self.get_repo(repo_name).get("id")
-                zenhub_issues_url = self.zenhub_url + '/' + github_repo_id + self.ISSUES_SUFFIX
-                zenhub_issue_data, zenhub_issue_headers, status = \
-                    self._zenhub_request(zenhub_issues_url + "/" + str(issue_number))
+                zenhub_issues_url = f'{self.zenhub_url}/{github_repo_id}{self.ISSUES_SUFFIX}'
+                (
+                    zenhub_issue_data,
+                    zenhub_issue_headers,
+                    status,
+                ) = self._zenhub_request(
+                    f"{zenhub_issues_url}/{str(issue_number)}"
+                )
+
                 issue_json.update(zenhub_issue_data.json())
             else:
                 zenhub_issues_url = ""
@@ -325,11 +336,17 @@ class GitHubConnector:
         :return: A list of events for the issue (intended to be stored in issue_json["events"]).
         """
         events = []
-        github_issue_events_url = github_issues_url + "/" + str(issue_number) + self.EVENTS_SUFFIX
+        github_issue_events_url = (
+            f"{github_issues_url}/{str(issue_number)}{self.EVENTS_SUFFIX}"
+        )
+
         github_issue_events_data, h, s = self._github_request(github_issue_events_url)
         events += github_issue_events_data
         if self.zenhub and zenhub_issues_url:
-            zenhub_issue_events_url = zenhub_issues_url + "/" + str(issue_number) + self.EVENTS_SUFFIX
+            zenhub_issue_events_url = (
+                f"{zenhub_issues_url}/{str(issue_number)}{self.EVENTS_SUFFIX}"
+            )
+
             zenhub_issue_events_data, h, s = self._zenhub_request(zenhub_issue_events_url)
             events += zenhub_issue_events_data
         return events
@@ -530,15 +547,9 @@ class GitHubConnector:
         if self._retry_for_github_limits(response):
             return self._github_request(endpoint, headers, params, follow_next, prev_response)
         if prev_response:
-            if not raw:
-                prev_response += response.json()
-            else:
-                prev_response += response.content
+            prev_response += response.content if raw else response.json()
         else:
-            if not raw:
-                prev_response = response.json()
-            else:
-                prev_response = response.content
+            prev_response = response.content if raw else response.json()
         link_header = response.headers.get("Link")
         if follow_next and link_header is not None and not raw:
             links = link_header.split(", ")
@@ -580,15 +591,20 @@ class GitHubConnector:
             self.github_reset = response.headers.get("X-RateLimit-Reset")
         if response.status_code == requests.codes.forbidden and self.github_remaining <= 0:
             if self._github_limit_wait and int(time.time()) + 1 < self.github_reset:
-                print("INFO: GHE rate limit reached. Waiting {} to retry.".format(int(self.github_reset - time.time())))
+                print(
+                    f"INFO: GHE rate limit reached. Waiting {int(self.github_reset - time.time())} to retry."
+                )
+
                 time.sleep(self.github_reset - time.time() + 1)
                 return True
             elif int(time.time()) + self._auto_retry_wait < self.github_reset:
                 time.sleep(self.github_reset - time.time() + 1)
                 return True
             else:
-                raise IOError("GitHub rate limit exceeded. Rate will reset in {}. Retry operation after that time."
-                              .format(self.github_reset - time.time()))
+                raise IOError(
+                    f"GitHub rate limit exceeded. Rate will reset in {self.github_reset - time.time()}. Retry operation after that time."
+                )
+
         try:
             response.raise_for_status()
         except BaseException as err:
@@ -629,15 +645,20 @@ class GitHubConnector:
             self.zenhub_reset = response.headers.get("X-RateLimit-Reset")
         if response.status_code == requests.codes.forbidden and self.zenhub_limit >= self.zenhub_api_used:
             if self._zenhub_limit_wait and int(time.time()) + 1 < self.zenhub_reset:
-                print("INFO: ZenHub rate limit reached. Waiting {} to retry.".format(int(self.zenhub_reset - time.time())))
+                print(
+                    f"INFO: ZenHub rate limit reached. Waiting {int(self.zenhub_reset - time.time())} to retry."
+                )
+
                 time.sleep(self.zenhub_reset - time.time() + 1)
                 return True
             elif int(time.time()) + self._auto_retry_wait < self.zenhub_reset:
                 time.sleep(self.zenhub_reset - time.time() + 1)
                 return True
             else:
-                raise IOError("GitHub rate limit exceeded. Rate will reset in {}. Retry operation after that time."
-                              .format(self.zenhub_reset - time.time()))
+                raise IOError(
+                    f"GitHub rate limit exceeded. Rate will reset in {self.zenhub_reset - time.time()}. Retry operation after that time."
+                )
+
 
         response.raise_for_status()
         return False
